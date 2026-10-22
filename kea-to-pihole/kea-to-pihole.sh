@@ -53,7 +53,9 @@ tmp=$(mktemp -d)
 sid=""
 cleanup() {
     # Always log out again, so Pi-hole doesn't run out of API sessions
-    [[ -n $sid ]] && curl "${ph_opts[@]}" -X DELETE "$PIHOLE_URL/api/auth" > /dev/null 2>&1 || true
+    if [[ -n $sid ]]; then
+        curl "${ph_opts[@]}" -X DELETE "$PIHOLE_URL/api/auth" > /dev/null 2>&1 || true
+    fi
     rm -rf "$tmp"
 }
 trap cleanup EXIT
