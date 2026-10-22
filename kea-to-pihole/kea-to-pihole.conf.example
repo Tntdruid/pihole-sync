@@ -1,0 +1,21 @@
+# Copy to kea-to-pihole.conf (next to the script) or /etc/kea-to-pihole.conf and fill in.
+# The file is sourced by bash, so keep the KEY="value" format.
+
+# OPNsense: System -> Access -> Users -> (user) -> API keys
+OPN_URL="https://192.168.1.1"
+OPN_KEY=""
+OPN_SECRET=""
+OPN_INSECURE=1                 # 1 = accept a self-signed certificate
+
+# Hostnames become <name>.<DOMAIN> and <name>
+DOMAIN="home.example.com"
+INCLUDE_LEASES=1               # 1 = also dynamic leases, 0 = reservations only
+INCLUDE_V6=1                   # 1 = also Kea DHCPv6
+
+# The primary Pi-hole. Without a password, Pi-hole only answers to its own names
+# (IP address, pi.hole, webserver.domain or hostname) - the IP address always works.
+PIHOLE_URL="https://192.168.1.2"
+PIHOLE_PASSWORD=""             # app password, empty if Pi-hole has no password
+PIHOLE_INSECURE=1
+
+#STATE_FILE="/var/lib/kea-to-pihole/managed.hosts"

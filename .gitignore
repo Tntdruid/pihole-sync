@@ -1,0 +1,4 @@
+# Local configuration with passwords and keys
+sync.env
+kea-to-pihole/kea-to-pihole.conf
+__pycache__/

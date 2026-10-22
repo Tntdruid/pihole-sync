@@ -1,0 +1,6 @@
+services:
+  pihole-sync:
+    build: .
+    container_name: pihole-sync
+    restart: unless-stopped
+    env_file: sync.env

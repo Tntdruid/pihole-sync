@@ -1,0 +1,15 @@
+# Copy to /etc/systemd/system/pihole-sync.service and adjust the path, then:
+#   systemctl daemon-reload && systemctl enable --now pihole-sync
+# Reads sync.env next to pihole-sync.py and syncs every INTERVAL seconds.
+[Unit]
+Description=Pi-hole sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/pihole-sync/pihole-sync.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
