@@ -91,6 +91,10 @@ nebula-sync, run pihole-sync with `--dry-run` first, then start it for real.
 on OPNsense (reservations and leases, IPv4 and IPv6) and writes them as local DNS records
 (`dns.hosts`) on the primary Pi-hole. pihole-sync then passes them on to the replicas.
 
+Many phones and TVs send no hostname over DHCPv6. Their IPv6 leases then get the name from
+the same device's IPv4 reservation or lease, matched by MAC address. If a device has several
+IPv6 leases, the newest one is used.
+
 Manual records are left alone. If you have a manual record for the same hostname and IP
 version, it wins over the Kea record.
 

@@ -92,6 +92,10 @@ først pihole-sync med `--dry-run`, og start den så rigtigt.
 Kea DHCP på OPNsense (reservationer og leases, IPv4 og IPv6) og skriver dem som lokale
 DNS-records (`dns.hosts`) på den primære Pi-hole. pihole-sync sender dem derefter videre til replicas.
 
+Mange telefoner og tv'er sender intet hostname via DHCPv6. Deres IPv6-leases får så navnet
+fra samme enheds IPv4-reservation eller -lease, matchet på MAC-adresse. Har en enhed flere
+IPv6-leases, bruges den nyeste.
+
 Manuelle records bliver ikke rørt. Har du en manuel record for samme hostname og IP-type,
 vinder den over Kea-recorden.
 

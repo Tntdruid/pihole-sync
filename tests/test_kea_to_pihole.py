@@ -43,13 +43,22 @@ class KeaTest(unittest.TestCase):
     def setUp(self):
         self.kea = {
             "kea/dhcpv4/search_reservation": [{"ip_address": "192.168.1.20", "hostname": "NAS.old.domain"},
-                                              {"ip_address": "192.168.1.5", "hostname": "printer"}],
+                                              {"ip_address": "192.168.1.5", "hostname": "printer",
+                                               "hw_address": "AA:BB:CC:00:00:05"}],
             "kea/leases4/search": [{"address": "192.168.1.100", "hostname": "Laptop_1"},
                                    {"address": "192.168.1.101", "hostname": "nas"},     # the reservation wins
                                    {"address": "192.168.1.102", "hostname": "manual"},  # the manual record wins
-                                   {"address": "192.168.1.103", "hostname": ""}],
+                                   {"address": "192.168.1.103", "hostname": "", "hwaddr": "aa:bb:cc:00:00:03"},
+                                   {"address": "192.168.1.104", "hostname": "phone", "hwaddr": "aa:bb:cc:00:00:04"}],
             "kea/dhcpv6/search_reservation": [],
-            "kea/leases6/search": [{"address": "fd00::20", "hostname": "nas"}],
+            # No hostname over DHCPv6: the name comes from the IPv4 side via the MAC, newest lease wins
+            "kea/leases6/search": [{"address": "fd00::20", "hostname": "nas"},
+                                   {"address": "fd00::40", "hostname": "", "hwaddr": "aa:bb:cc:00:00:04", "expire": 1700000100},
+                                   {"address": "fd00::41", "hostname": "", "hwaddr": "aa:bb:cc:00:00:04", "expire": 1700000300},
+                                   {"address": "fd00::42", "hostname": "", "hwaddr": "aa:bb:cc:00:00:04", "expire": 1700000200},
+                                   {"address": "fd00::50", "hostname": "", "hwaddr": "AA:BB:CC:00:00:05", "expire": 1700000000},
+                                   {"address": "fd00::60", "hostname": "", "hwaddr": "aa:bb:cc:00:00:03", "expire": 1700000000},
+                                   {"address": "fd00::70", "hostname": ""}],
         }
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
@@ -63,6 +72,13 @@ class KeaTest(unittest.TestCase):
 
     def run_script(self):
         env = dict(os.environ, KEA_TO_PIHOLE_CONFIG=bash_path(self.conf))
+        if os.name == "nt":
+            # jq on Windows writes CRLF unless given -b; on Linux it always writes LF
+            wrapper = os.path.join(self.tmp, "bin")
+            os.makedirs(wrapper, exist_ok=True)
+            with open(os.path.join(wrapper, "jq"), "w", newline="\n") as f:
+                f.write(f'#!/bin/sh\nexec "{bash_path(shutil.which("jq"))}" -b "$@"\n')
+            env["PATH"] = wrapper + os.pathsep + env["PATH"]
         r = subprocess.run(["bash", bash_path(os.path.abspath(SCRIPT))], env=env,
                            capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -76,7 +92,9 @@ class KeaTest(unittest.TestCase):
         self.assertEqual(ph.config["dns"]["hosts"], [
             "192.168.1.2 pihole", "10.0.0.5 manual.example.com manual",
             "192.168.1.5 printer.example.com printer", "192.168.1.20 nas.example.com nas",
-            "192.168.1.100 laptop1.example.com laptop1", "fd00::20 nas.example.com nas"])
+            "192.168.1.100 laptop1.example.com laptop1", "192.168.1.104 phone.example.com phone",
+            "fd00::20 nas.example.com nas", "fd00::41 phone.example.com phone",
+            "fd00::50 printer.example.com printer"])
         self.assertFalse(ph.sessions, "session not logged out")
 
         # Nothing changed: no PATCH
@@ -92,7 +110,9 @@ class KeaTest(unittest.TestCase):
         self.assertEqual(ph.config["dns"]["hosts"], [
             "192.168.1.2 pihole", "10.0.0.5 manual.example.com manual", "10.0.0.9 new-manual",
             "192.168.1.6 printer.example.com printer", "192.168.1.20 nas.example.com nas",
-            "fd00::20 nas.example.com nas"])
+            "192.168.1.104 phone.example.com phone",
+            "fd00::20 nas.example.com nas", "fd00::41 phone.example.com phone",
+            "fd00::50 printer.example.com printer"])
 
         # A manual IPv6 record for nas replaces Kea's IPv6 record, but not its IPv4 record
         ph.config["dns"]["hosts"].insert(0, "fd00::99 nas.example.com nas")

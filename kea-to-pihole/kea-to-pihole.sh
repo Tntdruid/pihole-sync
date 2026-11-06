@@ -64,14 +64,32 @@ api() {
     curl "${opn_opts[@]}" -d '{"current":1,"rowCount":-1,"searchPhrase":""}' "$OPN_URL/api/$1"
 }
 
-# Fetches "IP hostname" lines: reservations first, so they win over leases for the same hostname
+# Saves the reservations and leases for DHCPv$1 as JSON in $tmp
 fetch() {  # $1 = 4 or 6
-    api "kea/dhcpv$1/search_reservation" \
-        | jq -r '.rows[] | select((.hostname // "") != "" and (.ip_address // "") != "") | "\(.ip_address) \(.hostname)"'
+    api "kea/dhcpv$1/search_reservation" > "$tmp/res$1.json" || return 1
     if [[ $INCLUDE_LEASES == 1 ]]; then
-        api "kea/leases$1/search" \
-            | jq -r '.rows[] | select((.hostname // "") != "" and (.address // "") != "") | "\(.address) \(.hostname)"'
+        api "kea/leases$1/search" > "$tmp/leases$1.json" || return 1
+    else
+        echo '{"rows":[]}' > "$tmp/leases$1.json"
     fi
+}
+
+# "IP hostname MAC" lines, with "-" for a missing hostname or MAC. Reservations come first, so
+# they win over leases for the same hostname, then leases newest first, so a device with
+# several addresses gets the one it renewed last.
+hosts() {  # $1 = 4 or 6
+    jq -r '.rows[] | select((.ip_address // "") != "")
+        | "\(.ip_address) \(.hostname // "" | if . == "" then "-" else . end) \(.hw_address // "" | if . == "" then "-" else ascii_downcase end)"' \
+        "$tmp/res$1.json"
+    jq -r '.rows[] | select((.address // "") != "")
+        | "\(.address) \(.hostname // "" | if . == "" then "-" else . end) \(.hwaddr // "" | if . == "" then "-" else ascii_downcase end) \(.expire // 0)"' \
+        "$tmp/leases$1.json" | sort -k4,4r
+}
+
+# Fills in missing hostnames from the MAC -> hostname map in $tmp/macs, and drops lines without one
+resolve() {
+    awk 'NR == FNR { m[$1] = $2; next }
+         { h = $2; if (h == "-") h = ($3 in m) ? m[$3] : ""; if (h != "") print $1, h }' "$tmp/macs" -
 }
 
 # Normalise: first label only, lowercase, valid characters, one IP per hostname
@@ -83,16 +101,23 @@ normalise() {
         gsub(/[^a-z0-9-]/, "", h)
         if (h == "" || seen[h]++) next
         print ip, h "." dom, h
-    }' "$1"
+    }'
 }
 
-fetch 4 > "$tmp/raw4"
-normalise "$tmp/raw4" | sort -t . -k1,1n -k2,2n -k3,3n -k4,4n > "$tmp/kea"
+fetch 4
+hosts 4 > "$tmp/hosts4"
+# MAC -> hostname from DHCPv4. Many phones and TVs send no hostname over DHCPv6, so their
+# IPv6 leases borrow the name from the same device's IPv4 reservation or lease.
+awk '$2 != "-" && $3 != "-" && !($3 in m) { m[$3] = 1; print $3, $2 }' "$tmp/hosts4" > "$tmp/macs"
+resolve < "$tmp/hosts4" | normalise | sort -t . -k1,1n -k2,2n -k3,3n -k4,4n > "$tmp/kea"
 
 if [[ $INCLUDE_V6 == 1 ]]; then
-    # If the DHCPv6 call fails, we still keep the IPv4 list
-    fetch 6 > "$tmp/raw6" || { echo "Could not fetch from Kea DHCPv6 - skipping IPv6" >&2; : > "$tmp/raw6"; }
-    normalise "$tmp/raw6" | sort -k2,2 >> "$tmp/kea"
+    # If the DHCPv6 calls fail, we still keep the IPv4 list
+    if fetch 6; then
+        hosts 6 | resolve | normalise | sort -k2,2 >> "$tmp/kea"
+    else
+        echo "Could not fetch from Kea DHCPv6 - skipping IPv6" >&2
+    fi
 fi
 
 # Don't replace a good list with an empty one if the API answers strangely
